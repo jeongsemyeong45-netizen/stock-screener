@@ -69,11 +69,26 @@ def get_last_trading_day():
 
 @st.cache_data(ttl=3600)  # 1시간 캐시
 def load_market_ohlcv(date, market):
-    """전 종목 OHLCV"""
-    df = stock.get_market_ohlcv(date, market=market)
-    df = df.reset_index()
-    df["시장"] = market
-    return df
+    """전 종목 OHLCV (재시도 + 에러 핸들링)"""
+    import time as _time
+    last_error = None
+    for attempt in range(3):
+        try:
+            df = stock.get_market_ohlcv(date, market=market)
+            if df is None or df.empty:
+                last_error = f"{market} 데이터가 비어있음 (date={date})"
+                _time.sleep(1)
+                continue
+            df = df.reset_index()
+            df["시장"] = market
+            return df
+        except Exception as e:
+            last_error = f"{market} 로딩 실패: {type(e).__name__}: {e}"
+            _time.sleep(2)
+    # 3번 모두 실패
+    st.error(f"❌ {last_error}")
+    st.info(f"날짜 {date}의 {market} 데이터를 받을 수 없음. KRX 서버 일시 장애 가능. 잠시 후 🔄 새로고침 또는 사이드바에서 시장을 하나만 선택해보세요.")
+    st.stop()
 
 
 @st.cache_data(ttl=3600)
