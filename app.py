@@ -38,16 +38,33 @@ st.markdown("""
 
 
 # ===== 유틸 함수 =====
+@st.cache_data(ttl=3600)
 def get_last_trading_day():
-    """가장 최근 영업일 반환 (장 마감 후 데이터가 확정되는 시점 고려)"""
+    """실제 거래 데이터가 있는 가장 최근 영업일 반환 (공휴일/주말 자동 회피)"""
     today = datetime.now()
-    # 장 마감 + 데이터 갱신 시간 고려해서 18시 이전이면 전 영업일
+    # 18시 이전이면 당일 데이터가 아직 불안정하니 어제부터 탐색
     if today.hour < 18:
         today = today - timedelta(days=1)
-    # 주말 처리
-    while today.weekday() >= 5:
+
+    # 최대 10일 전까지 거슬러 올라가며 실제 데이터가 있는 날 찾기
+    for _ in range(10):
+        # 주말은 즉시 스킵
+        while today.weekday() >= 5:
+            today = today - timedelta(days=1)
+
+        date_str = today.strftime("%Y%m%d")
+        try:
+            # KOSPI에서 삼성전자(005930) 데이터로 영업일 여부 확인 (가장 가볍게)
+            df = stock.get_market_ohlcv(date_str, date_str, "005930")
+            if not df.empty and df["종가"].iloc[0] > 0:
+                return date_str
+        except Exception:
+            pass
+
         today = today - timedelta(days=1)
-    return today.strftime("%Y%m%d")
+
+    # 10일 내 영업일을 못 찾으면 (있을 리 없지만) 그냥 어제 반환
+    return (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
 
 
 @st.cache_data(ttl=3600)  # 1시간 캐시
